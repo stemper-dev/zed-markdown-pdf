@@ -22,11 +22,12 @@ import {
 } from "vscode-languageserver/node";
 import { TextDocument } from "vscode-languageserver-textdocument";
 
-import { COMMAND_EXPORT } from "./constants";
+import { COMMAND_EXPORT, COMMAND_EXPORT_AND_OPEN } from "./constants";
 import { SettingsStore } from "./config/settings-store";
 import { buildInitializeResult } from "./lsp/capabilities";
 import { buildExportCodeActions } from "./lsp/code-actions";
 import { exportMarkdownToPdf } from "./pdf/exporter";
+import { openInSystemViewer } from "./utils/open";
 import { isMarkdown } from "./utils/uri";
 
 const connection = createConnection(ProposedFeatures.all);
@@ -54,7 +55,8 @@ connection.onCodeAction((params) => {
 });
 
 connection.onExecuteCommand(async (params: ExecuteCommandParams) => {
-  if (params.command !== COMMAND_EXPORT) return;
+  const openAfter = params.command === COMMAND_EXPORT_AND_OPEN;
+  if (params.command !== COMMAND_EXPORT && !openAfter) return;
 
   const uriArg = (params.arguments ?? [])[0];
   if (typeof uriArg !== "string") {
@@ -76,6 +78,21 @@ connection.onExecuteCommand(async (params: ExecuteCommandParams) => {
     });
 
     reporter.done();
+
+    if (openAfter) {
+      // Export succeeded; a failure to open is non-fatal — the PDF still exists.
+      try {
+        await openInSystemViewer(pdfPath);
+      } catch (openErr) {
+        const reason = openErr instanceof Error ? openErr.message : String(openErr);
+        connection.console.error(`Could not open PDF: ${reason}`);
+        connection.window.showWarningMessage(
+          `PDF written to ${pdfPath}, but it could not be opened: ${reason}`,
+        );
+        return;
+      }
+    }
+
     connection.window.showInformationMessage(`PDF written: ${pdfPath}`);
   } catch (err) {
     reporter?.done();

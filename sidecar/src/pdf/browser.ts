@@ -7,7 +7,10 @@ import PCR from "puppeteer-chromium-resolver";
 
 import { Logger } from "../utils/logger";
 
-const LAUNCH_ARGS = ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"];
+// Keep Chromium's sandbox ON. `--no-sandbox` is only added as a fallback when a
+// sandboxed launch fails (e.g. a Linux box without user namespaces), via
+// launchWithSandboxFallback below.
+const BASE_ARGS = ["--disable-dev-shm-usage", "--disable-gpu"];
 
 /**
  * Launch a headless Chromium for printing.
@@ -15,6 +18,8 @@ const LAUNCH_ARGS = ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]
  * @remarks
  * Prefers a locally installed browser ({@link findLocalBrowser}); otherwise
  * falls back to a `puppeteer-chromium-resolver` download into the user cache.
+ * The sandbox is kept enabled; {@link launchWithSandboxFallback} only disables
+ * it if a sandboxed launch cannot start.
  *
  * @param logger - Sink for which-browser diagnostics.
  * @returns A launched Puppeteer {@link Browser}.
@@ -24,11 +29,7 @@ export async function launchBrowser(logger: Logger): Promise<Browser> {
   const localChrome = findLocalBrowser();
   if (localChrome) {
     logger.info(`Using local browser: ${localChrome}`);
-    return puppeteer.launch({
-      executablePath: localChrome,
-      headless: true,
-      args: LAUNCH_ARGS,
-    });
+    return launchWithSandboxFallback(localChrome, logger);
   }
 
   logger.info("No local Chrome detected; falling back to PCR download");
@@ -48,11 +49,31 @@ export async function launchBrowser(logger: Logger): Promise<Browser> {
     throw new Error("PCR resolved a Chromium binary but it is not launchable.");
   }
 
-  return puppeteer.launch({
-    executablePath: stats.executablePath,
-    headless: true,
-    args: LAUNCH_ARGS,
-  });
+  return launchWithSandboxFallback(stats.executablePath, logger);
+}
+
+/**
+ * Launch with the sandbox enabled; if that fails to start, retry once with
+ * `--no-sandbox`. Keeps the secure path as the default while still working on
+ * machines whose sandbox is unavailable.
+ */
+async function launchWithSandboxFallback(
+  executablePath: string,
+  logger: Logger,
+): Promise<Browser> {
+  try {
+    return await puppeteer.launch({ executablePath, headless: true, args: BASE_ARGS });
+  } catch (err) {
+    logger.info(
+      `Sandboxed Chromium launch failed (${err instanceof Error ? err.message : String(err)}); ` +
+        "retrying with --no-sandbox",
+    );
+    return puppeteer.launch({
+      executablePath,
+      headless: true,
+      args: [...BASE_ARGS, "--no-sandbox"],
+    });
+  }
 }
 
 /**

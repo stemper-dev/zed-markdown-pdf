@@ -1,17 +1,23 @@
 #!/usr/bin/env node
 // Smoke-test the built sidecar over stdio: spawn it, perform the LSP `initialize`
-// handshake, and assert the server advertises the `markdown.exportToPdf`
-// execute-command. Zed silently drops code-action commands that are NOT listed in
-// `executeCommandProvider.commands`, so this catches the most damaging regression.
+// handshake, and assert the LSP surface Zed relies on is intact:
+//
+//   1. `executeCommandProvider.commands` advertises BOTH export commands. Zed
+//      silently drops code-action commands that are NOT listed here, so a
+//      missing entry is the most damaging regression.
+//   2. `codeActionProvider` advertises the `source` kind.
+//   3. A `textDocument/codeAction` request on a Markdown document returns
+//      exactly the two `source.*` export actions, each wired to its command.
 //
 // Usage: node scripts/smoke-lsp.mjs <path-to-server.js>
 // Exits 0 on success, non-zero (with a reason) on failure.
 
 import { spawn } from "node:child_process";
 
-const EXPECTED_COMMAND = "markdown.exportToPdf";
+const EXPECTED_COMMANDS = ["markdown.exportToPdf", "markdown.exportToPdfAndOpen"];
 const TIMEOUT_MS = 15_000;
 const serverPath = process.argv[2] ?? "sidecar/dist/server.js";
+const DOC_URI = "file:///tmp/smoke-lsp-fixture.md";
 
 function frame(message) {
   const body = JSON.stringify(message);
@@ -28,7 +34,26 @@ const fail = (reason) => {
   process.exit(1);
 };
 
-const timer = setTimeout(() => fail(`no valid initialize response within ${TIMEOUT_MS}ms`), TIMEOUT_MS);
+const pass = (message) => {
+  clearTimeout(timer);
+  console.log(message);
+  child.kill("SIGTERM");
+  process.exit(0);
+};
+
+const timer = setTimeout(() => fail(`no valid response within ${TIMEOUT_MS}ms`), TIMEOUT_MS);
+
+// Handlers keyed by request id; each returns the next message(s) to send (or none).
+const pending = new Map();
+
+function send(message) {
+  child.stdin.write(frame(message));
+}
+
+function request(id, method, params, handler) {
+  pending.set(id, handler);
+  send({ jsonrpc: "2.0", id, method, params });
+}
 
 let buffer = "";
 child.stdout.setEncoding("utf8");
@@ -54,15 +79,10 @@ child.stdout.on("data", (chunk) => {
       return fail("invalid JSON in server response");
     }
 
-    if (msg.id !== 1) continue; // ignore log/notification traffic
-    const commands = msg.result?.capabilities?.executeCommandProvider?.commands ?? [];
-    if (!commands.includes(EXPECTED_COMMAND)) {
-      return fail(`executeCommandProvider does not advertise "${EXPECTED_COMMAND}" (got: ${JSON.stringify(commands)})`);
-    }
-    clearTimeout(timer);
-    console.log(`✓ sidecar advertises "${EXPECTED_COMMAND}"`);
-    child.kill("SIGTERM");
-    process.exit(0);
+    const handler = pending.get(msg.id);
+    if (!handler) continue; // ignore log/notification traffic
+    pending.delete(msg.id);
+    handler(msg);
   }
 });
 
@@ -71,11 +91,70 @@ child.on("exit", (code) => {
   if (code !== null && code !== 0) fail(`server exited early with code ${code}`);
 });
 
-child.stdin.write(
-  frame({
-    jsonrpc: "2.0",
-    id: 1,
-    method: "initialize",
-    params: { processId: process.pid, rootUri: null, capabilities: {} },
-  }),
+// Step 1: initialize -> check the advertised capabilities.
+request(
+  1,
+  "initialize",
+  { processId: process.pid, rootUri: null, capabilities: {} },
+  (msg) => {
+    const caps = msg.result?.capabilities ?? {};
+    const commands = caps.executeCommandProvider?.commands ?? [];
+    for (const command of EXPECTED_COMMANDS) {
+      if (!commands.includes(command)) {
+        return fail(
+          `executeCommandProvider does not advertise "${command}" (got: ${JSON.stringify(commands)})`,
+        );
+      }
+    }
+    const kinds = caps.codeActionProvider?.codeActionKinds ?? [];
+    if (!kinds.includes("source")) {
+      return fail(`codeActionProvider does not advertise the "source" kind (got: ${JSON.stringify(kinds)})`);
+    }
+    console.log(`✓ sidecar advertises ${EXPECTED_COMMANDS.map((c) => `"${c}"`).join(" + ")}`);
+    console.log(`✓ codeActionProvider advertises the "source" kind`);
+
+    // Open a Markdown buffer so the code-action handler recognizes it.
+    send({ jsonrpc: "2.0", method: "initialized", params: {} });
+    send({
+      jsonrpc: "2.0",
+      method: "textDocument/didOpen",
+      params: {
+        textDocument: { uri: DOC_URI, languageId: "markdown", version: 1, text: "# Smoke\n" },
+      },
+    });
+
+    // Step 2: request code actions for the open document.
+    request(
+      2,
+      "textDocument/codeAction",
+      {
+        textDocument: { uri: DOC_URI },
+        range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } },
+        context: { diagnostics: [] },
+      },
+      (actionMsg) => {
+        const actions = actionMsg.result ?? [];
+        if (!Array.isArray(actions) || actions.length !== 2) {
+          return fail(`expected exactly 2 code actions, got: ${JSON.stringify(actions)}`);
+        }
+        for (const action of actions) {
+          if (typeof action.kind !== "string" || !action.kind.startsWith("source")) {
+            return fail(`code action kind is not a source.* kind: ${JSON.stringify(action)}`);
+          }
+        }
+        const actionCommands = actions.map((a) => a.command?.command);
+        for (const command of EXPECTED_COMMANDS) {
+          if (!actionCommands.includes(command)) {
+            return fail(
+              `code actions do not include the "${command}" command (got: ${JSON.stringify(actionCommands)})`,
+            );
+          }
+        }
+        console.log(
+          `✓ codeAction returns exactly 2 source.* actions (${actions.map((a) => a.kind).join(", ")})`,
+        );
+        pass("✓ sidecar LSP smoke test passed");
+      },
+    );
+  },
 );

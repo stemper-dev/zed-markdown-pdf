@@ -10,4 +10,4 @@ license = "MIT"
 [language_servers.markdown-pdf-lsp]
 name = "Markdown PDF"
 languages = ["Markdown"]
-code_action_kinds = ["source", "quickfix"]
+code_action_kinds = ["source"]

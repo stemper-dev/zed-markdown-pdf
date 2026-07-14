@@ -2,8 +2,10 @@ name: CI
 
 # Validates every push / PR the same way the Zed registry will:
 #   - compiles the Rust coordinator to wasm32-wasip2 (what zed-industries CI does)
-#   - builds the TypeScript sidecar and type-checks it
-#   - smoke-tests the sidecar's LSP handshake (asserts the export command is advertised)
+#   - builds the TypeScript sidecar and type-checks it (tsc fails on any type error)
+#   - smoke-tests the sidecar's LSP surface: both export commands are advertised
+#     and a Markdown document yields exactly two source.* code actions
+#   - runs a REAL headless-Chromium render and asserts a valid PDF is produced
 
 on:
   push:
@@ -44,5 +46,43 @@ jobs:
       - name: Type-check & build
         working-directory: sidecar
         run: npm run build
-      - name: Smoke-test LSP handshake
+      - name: Smoke-test LSP surface (commands + code actions)
         run: node scripts/smoke-lsp.mjs sidecar/dist/server.js
+
+  render:
+    name: End-to-end PDF render
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: sidecar/package-lock.json
+      - name: Install dependencies
+        working-directory: sidecar
+        run: npm ci
+      - name: Build sidecar
+        working-directory: sidecar
+        run: npm run build
+      # The sidecar auto-detects a browser under /usr/bin (see pdf/browser.ts).
+      # GitHub's ubuntu-latest image ships Google Chrome there; fall back to a
+      # Chrome .deb only if it is somehow absent so the binary lands in /usr/bin.
+      - name: Ensure a system Chrome/Chromium is available
+        run: |
+          if command -v google-chrome >/dev/null 2>&1 || [ -x /usr/bin/chromium-browser ]; then
+            echo "Using preinstalled browser: $(command -v google-chrome || echo /usr/bin/chromium-browser)"
+          else
+            echo "Installing Google Chrome (.deb)"
+            wget -q -O /tmp/chrome.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+            sudo apt-get update
+            sudo apt-get install -y /tmp/chrome.deb
+          fi
+          google-chrome --version || /usr/bin/chromium-browser --version || true
+      # Ubuntu 24.04 restricts unprivileged user namespaces, which the Chromium
+      # sandbox needs. Relax it so the sandbox stays ON (the sidecar otherwise
+      # retries once with --no-sandbox). Ignore failure on kernels without the key.
+      - name: Enable Chromium sandbox (Ubuntu 24.04 userns restriction)
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+      - name: Render a fixture to PDF and assert %PDF- output
+        run: node scripts/ci-render.mjs sidecar/dist/server.js

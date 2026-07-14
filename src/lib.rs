@@ -1,4 +1,4 @@
-use std::fs;
+use std::{env, fs};
 use zed_extension_api::{
     self as zed,
     serde_json::{self, Value},
@@ -6,7 +6,7 @@ use zed_extension_api::{
     LanguageServerId, Result,
 };
 
-const SIDECAR_REPO: &str = "0xPatryk/zed-markdown-pdf";
+const SIDECAR_REPO: &str = "stemper-dev/zed-markdown-pdf";
 const SIDECAR_ARCHIVE_NAME: &str = "markdown-pdf-sidecar.tar.gz";
 const SIDECAR_ENTRY: &str = "dist/server.js";
 
@@ -16,10 +16,17 @@ struct MarkdownPdfExtension {
 
 impl MarkdownPdfExtension {
     fn ensure_sidecar(&mut self, language_server_id: &LanguageServerId) -> Result<String> {
+        // download_file extracts and fs operations resolve relative to the extension's
+        // working directory, but the returned entry is consumed by `node`, whose cwd is
+        // the worktree. Return an absolute path so node finds the sidecar regardless.
+        let work_dir = env::current_dir()
+            .map_err(|e| format!("failed to resolve extension working directory: {e}"))?;
+        let absolute = |rel: &str| work_dir.join(rel).to_string_lossy().into_owned();
+
         if let Some(path) = &self.cached_sidecar_dir {
             let entry = format!("{path}/{SIDECAR_ENTRY}");
             if fs::metadata(&entry).map_or(false, |m| m.is_file()) {
-                return Ok(entry);
+                return Ok(absolute(&entry));
             }
         }
 
@@ -84,7 +91,7 @@ impl MarkdownPdfExtension {
         }
 
         self.cached_sidecar_dir = Some(version_dir.clone());
-        Ok(entry_path)
+        Ok(absolute(&entry_path))
     }
 }
 

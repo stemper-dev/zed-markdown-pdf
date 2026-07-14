@@ -4,14 +4,16 @@ import {
   TextDocumentSyncKind,
 } from "vscode-languageserver/node";
 
-import { COMMAND_EXPORT } from "../constants";
+import { COMMAND_EXPORT, COMMAND_EXPORT_AND_OPEN } from "../constants";
 
 /**
  * Build the capabilities advertised during the LSP `initialize` handshake.
  *
  * @remarks
- * Declares incremental text sync, a code-action provider (Source + QuickFix),
- * and the {@link COMMAND_EXPORT} execute-command provider.
+ * Declares incremental text sync, a Source code-action provider, and the
+ * export execute-commands. Both {@link COMMAND_EXPORT} and
+ * {@link COMMAND_EXPORT_AND_OPEN} must be advertised here or Zed silently drops
+ * the corresponding code-action command.
  *
  * @returns The {@link InitializeResult} returned from `onInitialize`.
  */
@@ -20,10 +22,10 @@ export function buildInitializeResult(): InitializeResult {
     capabilities: {
       textDocumentSync: TextDocumentSyncKind.Incremental,
       codeActionProvider: {
-        codeActionKinds: [CodeActionKind.Source, CodeActionKind.QuickFix],
+        codeActionKinds: [CodeActionKind.Source],
       },
       executeCommandProvider: {
-        commands: [COMMAND_EXPORT],
+        commands: [COMMAND_EXPORT, COMMAND_EXPORT_AND_OPEN],
       },
     },
   };
