@@ -1,4 +1,4 @@
-use std::fs;
+use std::{env, fs};
 use zed_extension_api::{
     self as zed,
     serde_json::{self, Value},
@@ -14,12 +14,23 @@ struct MarkdownPdfExtension {
     cached_sidecar_dir: Option<String>,
 }
 
+/// Resolve a path relative to the extension's work dir into an absolute one.
+///
+/// Paths handed to `zed::Command` are resolved by the spawned process against the worktree
+/// root, while the extension's own filesystem calls resolve against its work dir. Anything
+/// crossing into a `Command` must therefore be absolute.
+fn absolute_work_dir_path(relative: &str) -> Result<String> {
+    let work_dir =
+        env::current_dir().map_err(|e| format!("failed to resolve extension work dir: {e}"))?;
+    Ok(work_dir.join(relative).to_string_lossy().into_owned())
+}
+
 impl MarkdownPdfExtension {
     fn ensure_sidecar(&mut self, language_server_id: &LanguageServerId) -> Result<String> {
         if let Some(path) = &self.cached_sidecar_dir {
             let entry = format!("{path}/{SIDECAR_ENTRY}");
             if fs::metadata(&entry).map_or(false, |m| m.is_file()) {
-                return Ok(entry);
+                return absolute_work_dir_path(&entry);
             }
         }
 
@@ -84,7 +95,7 @@ impl MarkdownPdfExtension {
         }
 
         self.cached_sidecar_dir = Some(version_dir.clone());
-        Ok(entry_path)
+        absolute_work_dir_path(&entry_path)
     }
 }
 
