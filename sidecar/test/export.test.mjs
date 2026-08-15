@@ -9,6 +9,7 @@ import test from "node:test";
 const require = createRequire(import.meta.url);
 const { DEFAULT_SETTINGS } = require("../dist/config/settings.js");
 const { buildHtmlDocument } = require("../dist/html/document-builder.js");
+const { buildExportCodeActions } = require("../dist/lsp/code-actions.js");
 const { launchBrowser } = require("../dist/pdf/browser.js");
 const { exportMarkdownToPdf } = require("../dist/pdf/exporter.js");
 const { waitForDynamicContent } = require("../dist/pdf/page-readiness.js");
@@ -18,6 +19,14 @@ const logger = {
   warn() {},
   error() {},
 };
+
+test("offers exactly one export action", () => {
+  const actions = buildExportCodeActions("file:///tmp/report.md");
+
+  assert.equal(actions.length, 1);
+  assert.equal(actions[0].title, "Export Markdown to PDF");
+  assert.equal(actions[0].kind, "source.exportToPdf");
+});
 
 test("Mermaid is bundled locally with strict rendering", () => {
   const html = buildHtmlDocument(

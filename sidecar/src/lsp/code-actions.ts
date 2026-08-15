@@ -8,11 +8,12 @@ import { COMMAND_EXPORT } from "../constants";
  * @remarks
  * Zed dispatches `workspace/executeCommand` when the user applies a code action
  * whose `command.command` is advertised in `executeCommandProvider` (verified in
- * `zed/crates/project/src/lsp_store.rs`, `apply_code_action`). Both Source and
- * QuickFix variants are returned so the action surfaces in either menu.
+ * `zed/crates/project/src/lsp_store.rs`, `apply_code_action`). This is a source
+ * action rather than a quick fix because it is an explicit document operation,
+ * not a response to a diagnostic.
  *
  * @param documentUri - URI of the target document, forwarded as the command argument.
- * @returns The Source and QuickFix code actions, both bound to {@link COMMAND_EXPORT}.
+ * @returns One source code action bound to {@link COMMAND_EXPORT}.
  */
 export function buildExportCodeActions(documentUri: string): CodeAction[] {
   const command: Command = {
@@ -25,11 +26,6 @@ export function buildExportCodeActions(documentUri: string): CodeAction[] {
     {
       title: "Export Markdown to PDF",
       kind: `${CodeActionKind.Source}.exportToPdf`,
-      command,
-    },
-    {
-      title: "Export Markdown to PDF",
-      kind: CodeActionKind.QuickFix,
       command,
     },
   ];
