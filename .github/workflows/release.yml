@@ -2,15 +2,15 @@ name: Release
 
 # Fires on a version tag (e.g. `v0.1.0`). Two ordered jobs:
 #   1. sidecar  — build + bundle markdown-pdf-sidecar.tar.gz and attach it to the
-#                 GitHub Release. The extension's WASM coordinator downloads this
-#                 asset at runtime via `latest_github_release`, so it MUST exist
+#                 GitHub Release. The extension's WASM coordinator downloads the
+#                 release matching its own version, so the asset MUST exist
 #                 before the new version reaches users.
 #   2. registry — open the version-bump PR against zed-industries/extensions.
 #                 Runs only after the sidecar asset is published.
 #
 # Release flow:
 #   1. bump `version` in extension.toml AND Cargo.toml (keep them equal)
-#   2. git commit, then: git tag v0.1.1 && git push --tags
+#   2. git commit, then: git tag vX.Y.Z && git push --tags
 
 on:
   push:
@@ -24,11 +24,11 @@ jobs:
     permissions:
       contents: write # create the GitHub Release and upload the asset
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: "20"
+          node-version: "22.12.0"
           cache: npm
           cache-dependency-path: sidecar/package-lock.json
 
@@ -39,9 +39,8 @@ jobs:
         run: node scripts/smoke-lsp.mjs sidecar/dist/server.js
 
       - name: Publish GitHub Release with sidecar asset
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
-          # Non-prerelease so latest_github_release(pre_release: false) finds it.
           files: markdown-pdf-sidecar.tar.gz
           generate_release_notes: true
 
@@ -56,7 +55,7 @@ jobs:
     #      the version of an already-registered extension on later releases.
     #   3. Create a classic PAT (repo + workflow scopes) -> secret COMMITTER_TOKEN
     steps:
-      - uses: huacnlee/zed-extension-action@v2
+      - uses: huacnlee/zed-extension-action@82920ff0876879f65ffbcfa3403589114a8919c6 # v2
         with:
           extension-name: markdown-pdf # == id in extension.toml
           push-to: 0xPatryk/extensions # your fork of zed-industries/extensions

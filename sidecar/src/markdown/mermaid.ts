@@ -1,22 +1,23 @@
+import * as fs from "fs";
+import * as path from "path";
 import type MarkdownIt from "markdown-it";
 import type * as cheerio from "cheerio";
 
 import { escapeHtml } from "../utils/html";
 
 /**
- * ES-module snippet that loads the Mermaid runtime from a CDN and renders any
- * `<pre class="mermaid">` blocks on load.
+ * Return an inline Mermaid runtime that renders any diagram blocks on load.
  *
  * @remarks
- * Injected into `<head>` only when such blocks exist. Mirrors the pattern from
- * `ThomasLatham/markdown-pdf-plus`.
+ * Mermaid is read from the lockfile-pinned local package. This keeps exports
+ * deterministic and avoids executing CDN-hosted JavaScript at render time.
  */
-export const MERMAID_RUNTIME_TAG = `
-      <script type="module">
-        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
-        mermaid.initialize({ startOnLoad: true, securityLevel: 'loose' });
-      </script>
-    `;
+export function mermaidRuntimeTag(): string {
+  const runtimePath = path.join(__dirname, "..", "vendor", "mermaid.min.js");
+  const runtime = fs.readFileSync(runtimePath, "utf8").replace(/<\/script/gi, "<\\/script");
+  return `<script>${runtime}</script>
+    <script>mermaid.initialize({ startOnLoad: true, securityLevel: "strict" });</script>`;
+}
 
 /**
  * Install a fence renderer that short-circuits ```mermaid fences.

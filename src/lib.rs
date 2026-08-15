@@ -6,7 +6,8 @@ use zed_extension_api::{
     LanguageServerId, Result,
 };
 
-const SIDECAR_REPO: &str = "0xPatryk/zed-markdown-pdf";
+const SIDECAR_REPO: &str = "stemper-dev/zed-markdown-pdf";
+const SIDECAR_TAG: &str = concat!("v", env!("CARGO_PKG_VERSION"));
 const SIDECAR_ARCHIVE_NAME: &str = "markdown-pdf-sidecar.tar.gz";
 const SIDECAR_ENTRY: &str = "dist/server.js";
 
@@ -18,7 +19,7 @@ impl MarkdownPdfExtension {
     fn ensure_sidecar(&mut self, language_server_id: &LanguageServerId) -> Result<String> {
         if let Some(path) = &self.cached_sidecar_dir {
             let entry = format!("{path}/{SIDECAR_ENTRY}");
-            if fs::metadata(&entry).map_or(false, |m| m.is_file()) {
+            if fs::metadata(&entry).is_ok_and(|m| m.is_file()) {
                 return Ok(entry);
             }
         }
@@ -28,19 +29,14 @@ impl MarkdownPdfExtension {
             &zed::LanguageServerInstallationStatus::CheckingForUpdate,
         );
 
-        let release = zed::latest_github_release(
-            SIDECAR_REPO,
-            zed::GithubReleaseOptions {
-                require_assets: true,
-                pre_release: false,
-            },
-        )
-        .map_err(|e| {
+        // The native sidecar is executable code, so bind it to the extension's
+        // own version rather than trusting whichever release happens to be latest.
+        let release = zed::github_release_by_tag_name(SIDECAR_REPO, SIDECAR_TAG).map_err(|e| {
             format!(
-                "No published sidecar release found at github.com/{SIDECAR_REPO} ({e}). \
+                "No sidecar release `{SIDECAR_TAG}` found at github.com/{SIDECAR_REPO} ({e}). \
                  For local development, install the sidecar onto your PATH so the \
                  extension can find it via `which`:\n  \
-                 cd <repo>/sidecar && npm install && npm run build && npm link"
+                 cd <repo>/sidecar && npm ci --ignore-scripts && npm run build && npm link"
             )
         })?;
 
@@ -55,10 +51,19 @@ impl MarkdownPdfExtension {
                 )
             })?;
 
-        let version_dir = format!("sidecar-{}", release.version);
+        let expected_download_prefix =
+            format!("https://github.com/{SIDECAR_REPO}/releases/download/{SIDECAR_TAG}/");
+        if !asset.download_url.starts_with(&expected_download_prefix) {
+            return Err(format!(
+                "refusing unexpected sidecar download URL: {}",
+                asset.download_url
+            ));
+        }
+
+        let version_dir = format!("sidecar-{SIDECAR_TAG}");
         let entry_path = format!("{version_dir}/{SIDECAR_ENTRY}");
 
-        let already_present = fs::metadata(&entry_path).map_or(false, |m| m.is_file());
+        let already_present = fs::metadata(&entry_path).is_ok_and(|m| m.is_file());
 
         if !already_present {
             zed::set_language_server_installation_status(
@@ -126,9 +131,10 @@ impl zed::Extension for MarkdownPdfExtension {
             });
         }
 
-        let node = worktree
-            .which("node")
-            .ok_or_else(|| "Node.js (>= 18) must be installed and on PATH to use Markdown PDF Export.".to_string())?;
+        let node = worktree.which("node").ok_or_else(|| {
+            "Node.js (>= 22.12) must be installed and on PATH to use Markdown PDF Export."
+                .to_string()
+        })?;
 
         let sidecar_entry = self.ensure_sidecar(language_server_id)?;
 

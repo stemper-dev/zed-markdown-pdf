@@ -1,55 +1,35 @@
 import * as fs from "fs";
-import * as os from "os";
 import * as path from "path";
 
 import puppeteer, { Browser } from "puppeteer-core";
-import PCR from "puppeteer-chromium-resolver";
 
 import { Logger } from "../utils/logger";
 
-const LAUNCH_ARGS = ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"];
+const LAUNCH_ARGS = ["--disable-dev-shm-usage"];
 
 /**
  * Launch a headless Chromium for printing.
  *
  * @remarks
- * Prefers a locally installed browser ({@link findLocalBrowser}); otherwise
- * falls back to a `puppeteer-chromium-resolver` download into the user cache.
+ * Uses a locally installed browser ({@link findLocalBrowser}). Keeping browser
+ * installation explicit avoids downloading and executing a large third-party
+ * binary at export time.
  *
  * @param logger - Sink for which-browser diagnostics.
  * @returns A launched Puppeteer {@link Browser}.
- * @throws If the resolver returns a Chromium binary that is not launchable.
+ * @throws If no supported browser is installed.
  */
 export async function launchBrowser(logger: Logger): Promise<Browser> {
   const localChrome = findLocalBrowser();
-  if (localChrome) {
-    logger.info(`Using local browser: ${localChrome}`);
-    return puppeteer.launch({
-      executablePath: localChrome,
-      headless: true,
-      args: LAUNCH_ARGS,
-    });
+  if (!localChrome) {
+    throw new Error(
+      "No Chromium-based browser found. Install Chrome, Edge, Brave, or Chromium and retry.",
+    );
   }
 
-  logger.info("No local Chrome detected; falling back to PCR download");
-  const stats = await PCR({
-    detectionPath: path.join(os.homedir(), ".cache", "markdown-pdf"),
-    folderName: "chromium",
-    hosts: [
-      "https://storage.googleapis.com",
-      "https://cdn.npmmirror.com/binaries/chromium-browser-snapshots",
-    ],
-    cacheRevisions: 2,
-    retry: 3,
-    silent: true,
-  });
-
-  if (!stats.launchable) {
-    throw new Error("PCR resolved a Chromium binary but it is not launchable.");
-  }
-
+  logger.info(`Using local browser with its sandbox enabled: ${localChrome}`);
   return puppeteer.launch({
-    executablePath: stats.executablePath,
+    executablePath: localChrome,
     headless: true,
     args: LAUNCH_ARGS,
   });
