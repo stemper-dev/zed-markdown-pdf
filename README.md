@@ -31,7 +31,7 @@ Mermaid diagrams are drawn, and task lists, footnotes, and tables all carry over
 
 ## Requirements
 
-- **Node.js 22.12+** on your `PATH`. The export engine runs as a native helper
+- **Node.js 22.23.2+** on your `PATH`. The export engine runs as a native helper
   process, which Zed launches with your installed `node`.
   > Tip: if Zed is opened from the macOS Dock/Finder and can't find `node`,
   > launch it once from a terminal (`zed`) so it inherits your shell `PATH`.
@@ -252,16 +252,12 @@ node scripts/smoke-lsp.mjs sidecar/dist/server.js
 
 ### Releasing
 
-CI is tag-driven (`.github/workflows/release.yml`):
+CI is tag-driven (`.github/workflows/release.yml`). Before releasing, enable
+immutable releases, protect `v*` tags, configure required reviewers on the
+`release` environment, and add a narrowly scoped `COMMITTER_TOKEN` there.
 
-1. Bump `version` in both `extension.toml` and `Cargo.toml` (keep them equal).
-2. `git tag vX.Y.Z && git push --tags`.
-
-The `release` workflow builds and bundles `markdown-pdf-sidecar.tar.gz`, attaches
-it to the matching GitHub Release (the coordinator requests that exact version),
-then opens the version-bump PR against
-[`zed-industries/extensions`](https://github.com/zed-industries/extensions).
-See the comments in the workflow for the one-time fork + `COMMITTER_TOKEN` setup.
+Then bump `version` in `extension.toml`, `Cargo.toml`, `sidecar/package.json`, and
+both lockfiles, merge to `main`, and tag that commit with the matching `vX.Y.Z`.
 
 ## License
 

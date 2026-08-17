@@ -132,7 +132,7 @@ impl zed::Extension for MarkdownPdfExtension {
         }
 
         let node = worktree.which("node").ok_or_else(|| {
-            "Node.js (>= 22.12) must be installed and on PATH to use Markdown PDF Export."
+            "Node.js (>= 22.23.2) must be installed and on PATH to use Markdown PDF Export."
                 .to_string()
         })?;
 

@@ -17,8 +17,8 @@ cd sidecar
 echo "==> Installing dependencies (incl. dev, needed for tsc; lifecycle scripts disabled)"
 npm ci --ignore-scripts --silent
 
-echo "==> Compiling TypeScript"
-npm run build --silent
+echo "==> Building and testing"
+npm test --silent
 
 echo "==> Pruning to production dependencies"
 npm prune --omit=dev --ignore-scripts --silent

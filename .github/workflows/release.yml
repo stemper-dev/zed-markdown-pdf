@@ -1,63 +1,104 @@
 name: Release
 
-# Fires on a version tag (e.g. `v0.1.0`). Two ordered jobs:
-#   1. sidecar  — build + bundle markdown-pdf-sidecar.tar.gz and attach it to the
-#                 GitHub Release. The extension's WASM coordinator downloads the
-#                 release matching its own version, so the asset MUST exist
-#                 before the new version reaches users.
-#   2. registry — open the version-bump PR against zed-industries/extensions.
-#                 Runs only after the sidecar asset is published.
-#
-# Release flow:
-#   1. bump `version` in extension.toml AND Cargo.toml (keep them equal)
-#   2. git commit, then: git tag vX.Y.Z && git push --tags
+# Release prerequisites (configured in GitHub, not this file):
+#   - immutable releases enabled
+#   - a ruleset restricting refs/tags/v* creation and blocking updates/deletion
+#   - a protected `release` environment with required reviewers
 
 on:
   push:
     tags:
       - "v*"
 
-jobs:
-  sidecar:
-    name: Build & publish sidecar
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write # create the GitHub Release and upload the asset
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+permissions:
+  contents: read
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+jobs:
+  build:
+    name: Validate & build sidecar
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          node-version: "22.12.0"
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22.23.2"
           cache: npm
           cache-dependency-path: sidecar/package-lock.json
 
+      - name: Verify release tag
+        run: |
+          expected="${GITHUB_REF_NAME#v}"
+          [[ "$expected" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          versions=(
+            "$(awk -F '"' '/^version = / { print $2; exit }' Cargo.toml)"
+            "$(awk -F '"' '/^version = / { print $2; exit }' extension.toml)"
+            "$(node -p "require('./sidecar/package.json').version")"
+            "$(node -p "require('./sidecar/package-lock.json').version")"
+            "$(awk '$0 == "name = \"markdown-pdf\"" { found=1; next } found && /^version = / { gsub(/\"/, "", $3); print $3; exit }' Cargo.lock)"
+          )
+          for version in "${versions[@]}"; do
+            [[ "$version" == "$expected" ]] || {
+              echo "Tag $GITHUB_REF_NAME does not match version $version" >&2
+              exit 1
+            }
+          done
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || {
+            echo "Tagged commit is not on origin/main" >&2
+            exit 1
+          }
+
       - name: Build & bundle sidecar
-        run: ./scripts/package-sidecar.sh # -> markdown-pdf-sidecar.tar.gz (repo root)
+        run: ./scripts/package-sidecar.sh # -> markdown-pdf-sidecar.tar.gz
 
-      - name: Smoke-test the built sidecar
-        run: node scripts/smoke-lsp.mjs sidecar/dist/server.js
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sidecar-release
+          path: markdown-pdf-sidecar.tar.gz
+          if-no-files-found: error
 
-      - name: Publish GitHub Release with sidecar asset
-        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+  publish:
+    name: Publish immutable release
+    needs: build
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: sidecar-release
+
+      # v2.6.2 creates a draft, uploads assets, then publishes it so immutable
+      # releases are locked only after the sidecar is attached.
+      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           files: markdown-pdf-sidecar.tar.gz
-          generate_release_notes: true
+
+      - name: Verify immutable release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [[ "$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$GITHUB_REF_NAME" --jq .immutable)" == true ]] || {
+            gh release delete "$GITHUB_REF_NAME" --yes
+            echo "Deleted mutable release; enable release immutability before retrying" >&2
+            exit 1
+          }
 
   registry:
     name: Open zed-industries/extensions PR
-    needs: sidecar
+    needs: publish
     runs-on: ubuntu-latest
-    # One-time setup before this works:
-    #   1. Fork zed-industries/extensions -> <you>/extensions
-    #   2. For the FIRST submission, open the PR by hand (add the submodule +
-    #      extensions.toml entry, run `pnpm sort-extensions`). This action bumps
-    #      the version of an already-registered extension on later releases.
-    #   3. Create a classic PAT (repo + workflow scopes) -> secret COMMITTER_TOKEN
+    environment: release
+    # COMMITTER_TOKEN should be a narrowly scoped GitHub App token or a classic
+    # PAT with public_repo only. Never grant workflow.
     steps:
-      - uses: huacnlee/zed-extension-action@82920ff0876879f65ffbcfa3403589114a8919c6 # v2
+      - uses: huacnlee/zed-extension-action@82920ff0876879f65ffbcfa3403589114a8919c6 # post-v2.0.0 v2 branch commit
         with:
-          extension-name: markdown-pdf # == id in extension.toml
-          push-to: 0xPatryk/extensions # your fork of zed-industries/extensions
+          extension-name: markdown-pdf
+          push-to: stemper-dev/extensions
         env:
           COMMITTER_TOKEN: ${{ secrets.COMMITTER_TOKEN }}
