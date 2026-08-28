@@ -1,6 +1,6 @@
 {
   "name": "markdown-pdf-sidecar",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "Native LSP sidecar for the Zed Markdown PDF Export extension.",
   "private": true,
   "main": "dist/server.js",
@@ -8,22 +8,22 @@
     "markdown-pdf-sidecar": "bin/markdown-pdf-sidecar"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node ../scripts/copy-mermaid.mjs",
     "watch": "tsc -p tsconfig.json --watch",
-    "package": "npm run build && tar -czf ../markdown-pdf-sidecar.tar.gz dist package.json node_modules"
+    "test": "npm run build && node --test test/*.test.mjs && node ../scripts/smoke-lsp.mjs dist/server.js",
+    "package": "../scripts/package-sidecar.sh"
   },
   "dependencies": {
     "cheerio": "^1.0.0",
     "highlight.js": "^11.10.0",
     "katex": "^0.16.11",
-    "markdown-it": "^14.1.0",
+    "markdown-it": "^14.3.0",
     "markdown-it-anchor": "^9.2.0",
     "markdown-it-footnote": "^4.0.0",
     "markdown-it-highlightjs": "^4.2.0",
     "markdown-it-task-lists": "^2.1.1",
     "markdown-it-texmath": "^1.0.0",
-    "puppeteer-chromium-resolver": "^23.0.0",
-    "puppeteer-core": "^23.10.4",
+    "puppeteer-core": "^25.7.0",
     "vscode-languageserver": "^9.0.1",
     "vscode-languageserver-textdocument": "^1.0.12",
     "vscode-uri": "^3.0.8"
@@ -31,10 +31,11 @@
   "devDependencies": {
     "@types/katex": "^0.16.7",
     "@types/markdown-it": "^14.1.2",
-    "@types/node": "^20.14.0",
+    "@types/node": "^22.20.1",
+    "mermaid": "^11.16.1",
     "typescript": "^5.5.4"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22.23.2"
   }
 }

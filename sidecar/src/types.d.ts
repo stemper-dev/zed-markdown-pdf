@@ -1,41 +1,6 @@
 // Ambient declarations for CJS modules without bundled TypeScript types.
 // Mirrors the pattern used by ThomasLatham/markdown-pdf-plus.
 
-declare module "puppeteer-chromium-resolver" {
-  import type { Browser } from "puppeteer-core";
-
-  interface PCRStats {
-    revision: string;
-    executablePath: string;
-    folderPath: string;
-    chromiumVersion: string;
-    puppeteerVersion: string;
-    launchable: boolean;
-    puppeteer: {
-      launch: (opts?: Record<string, unknown>) => Promise<Browser>;
-    };
-  }
-
-  interface PCROptions {
-    revision?: string;
-    detectionPath?: string;
-    folderName?: string;
-    downloadPath?: string;
-    hosts?: string[];
-    cacheRevisions?: number;
-    retry?: number;
-    silent?: boolean;
-    [key: string]: unknown;
-  }
-
-  function PCR(options?: PCROptions): Promise<PCRStats>;
-  namespace PCR {
-    function getStats(options?: PCROptions): PCRStats | null;
-  }
-
-  export = PCR;
-}
-
 declare module "*.json" {
   const value: unknown;
   export default value;

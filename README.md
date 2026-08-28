@@ -27,25 +27,24 @@ Mermaid diagrams are drawn, and task lists, footnotes, and tables all carry over
 - 📊 Mermaid diagrams
 - ✅ GitHub-style task lists, footnotes, tables, and heading anchors
 - 🧩 Custom CSS, page size, and margins via settings
-- 🌐 Uses a browser you already have (Chrome / Edge / Brave / Chromium); downloads
-  a headless Chromium only as a last resort
+- 🌐 Uses a browser you already have (Chrome / Edge / Brave / Chromium)
 
 ## Requirements
 
-- **Node.js 18+** on your `PATH`. The export engine runs as a native helper
+- **Node.js 22.23.2+** on your `PATH`. The export engine runs as a native helper
   process, which Zed launches with your installed `node`.
   > Tip: if Zed is opened from the macOS Dock/Finder and can't find `node`,
   > launch it once from a terminal (`zed`) so it inherits your shell `PATH`.
 - **A Chromium-based browser** (Google Chrome, Edge, Brave, or Chromium) is used
-  for rendering. If none is found, a headless Chromium is downloaded automatically
-  on first export and cached under `~/.cache/markdown-pdf`.
+  for rendering. The extension does not download or install browser binaries.
 
 ## Install
 
 1. Open the command palette → **zed: extensions**.
 2. Search for **Markdown PDF** and click **Install**.
 
-The first export downloads the rendering helper; subsequent exports are instant.
+The first export downloads the version-matched rendering helper; subsequent
+exports are instant.
 
 ## Usage
 
@@ -234,8 +233,8 @@ LSP code action because Zed surfaces those in the `cmd-.` menu.
 rustup target add wasm32-wasip2          # rustup-managed Rust required
 cargo build --release --target wasm32-wasip2
 
-# 2. Build the sidecar
-cd sidecar && npm install && npm run build && cd ..
+# 2. Build the sidecar without running dependency lifecycle scripts
+cd sidecar && npm ci --ignore-scripts && npm run build && cd ..
 
 # 3. Run Zed against this folder, bypassing the GitHub release download
 export MARKDOWN_PDF_SIDECAR_JS="$PWD/sidecar/dist/server.js"
@@ -253,15 +252,12 @@ node scripts/smoke-lsp.mjs sidecar/dist/server.js
 
 ### Releasing
 
-CI is tag-driven (`.github/workflows/release.yml`):
+CI is tag-driven (`.github/workflows/release.yml`). Before releasing, enable
+immutable releases, protect `v*` tags, configure required reviewers on the
+`release` environment, and add a narrowly scoped `COMMITTER_TOKEN` there.
 
-1. Bump `version` in both `extension.toml` and `Cargo.toml` (keep them equal).
-2. `git tag vX.Y.Z && git push --tags`.
-
-The `release` workflow builds and bundles `markdown-pdf-sidecar.tar.gz`, attaches
-it to the GitHub Release (the coordinator downloads it at runtime), then opens the
-version-bump PR against [`zed-industries/extensions`](https://github.com/zed-industries/extensions).
-See the comments in the workflow for the one-time fork + `COMMITTER_TOKEN` setup.
+Then bump `version` in `extension.toml`, `Cargo.toml`, `sidecar/package.json`, and
+both lockfiles, merge to `main`, and tag that commit with the matching `vX.Y.Z`.
 
 ## License
 

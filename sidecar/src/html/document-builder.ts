@@ -7,7 +7,7 @@ import { ExportSettings } from "../config/settings";
 import { Logger } from "../utils/logger";
 import { escapeHtml } from "../utils/html";
 import { renderMarkdown } from "../markdown/renderer";
-import { convertMermaidBlocks, MERMAID_RUNTIME_TAG } from "../markdown/mermaid";
+import { convertMermaidBlocks, mermaidRuntimeTag } from "../markdown/mermaid";
 import { inlineLocalImages, inlineLocalCssUrls } from "./asset-inliner";
 import { baseStylesheet, highlightJsCss, katexCss, buildPageRule } from "./stylesheets";
 
@@ -101,7 +101,7 @@ function appendBundledStyles($: Document, settings: ExportSettings): void {
 function injectMermaidRuntime($: Document): void {
   convertMermaidBlocks($);
   if ($("pre.mermaid").length > 0) {
-    $("head").append(MERMAID_RUNTIME_TAG);
+    $("head").append(mermaidRuntimeTag());
   }
 }
 
